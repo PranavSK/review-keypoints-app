@@ -2,10 +2,10 @@ import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { KeyMoment, Sentence, getKeyMoments, getSentences, getVideoInfo, getVideoURL } from '@/lib/loader'
+import { KeyMoment, Sentence } from '@/lib/loader'
 import { AspectRatio } from '@radix-ui/react-aspect-ratio'
 import * as SliderPrimitive from '@radix-ui/react-slider'
-import { createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { ComponentRef, Dispatch, RefObject, createContext, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { z } from 'zod'
 import { useForm, SubmitHandler } from 'react-hook-form'
@@ -14,22 +14,14 @@ import { Input } from '@/components/ui/input'
 import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { CheckIcon, DotFilledIcon, PauseIcon, PlayIcon, PlusIcon, ReloadIcon, TrashIcon } from '@radix-ui/react-icons'
+import { CheckIcon, DotFilledIcon, DoubleArrowUpIcon, PauseIcon, PlayIcon, PlusIcon, ReloadIcon, TrashIcon } from '@radix-ui/react-icons'
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
 import { Slider } from '@/components/ui/slider'
-import { calculatePercentage, cn } from '@/lib/utils'
+import { calculatePercentage, cn, secondsToTimecode } from '@/lib/utils'
+import { useStoreSlice } from '@/lib/store'
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
 
-export const Route = createFileRoute('/dashboard/$mid')({
-  loader: async ({ params: { mid } }) => {
-    const info = await getVideoInfo(mid)
-    const src = getVideoURL(mid)
-    const sentences = await getSentences(mid)
-    const keyMoments = await getKeyMoments(mid)
-
-    return { info, src, sentences, keyMoments }
-  },
-  component: DashboardItemComponent,
-})
+export const Route = createFileRoute('/dashboard/$mid')({ component: DashboardItemComponent, })
 
 interface State {
   selectedKeyMoment: number;
@@ -41,6 +33,7 @@ type Action =
   { type: 'MODIFY_KEY_MOMENT'; payload: Partial<KeyMoment>; } |
   { type: 'ADD_KEY_MOMENT'; payload: { index: number; keyMoment: KeyMoment; }; } |
   { type: 'REMOVE_KEY_MOMENT'; payload: number; } |
+  { type: 'MERGE_KEY_MOMENTS'; payload: number } |
   { type: 'MARK_KEY_MOMENT_COMPLETED'; payload: number; };
 const reducer = (state: State, action: Action): State => {
   switch (action.type) {
@@ -59,7 +52,21 @@ const reducer = (state: State, action: Action): State => {
     case 'ADD_KEY_MOMENT':
       return { ...state, keyMoments: [...state.keyMoments.slice(0, action.payload.index), action.payload.keyMoment, ...state.keyMoments.slice(action.payload.index)] };
     case 'REMOVE_KEY_MOMENT':
-      return { ...state, keyMoments: state.keyMoments.filter((_, i) => i !== action.payload) };
+      return { ...state, selectedKeyMoment: state.selectedKeyMoment === state.keyMoments.length - 1 ? state.selectedKeyMoment - 1 : state.selectedKeyMoment, keyMoments: state.keyMoments.filter((_, i) => i !== action.payload) };
+    case 'MERGE_KEY_MOMENTS': {
+      const stateCopy = { ...state };
+      const keyMomentsCopy = [...state.keyMoments];
+      const target = { ...keyMomentsCopy[action.payload] };
+      const next = keyMomentsCopy[action.payload + 1];
+      target.title = `${target.title}, ${next.title}`;
+      target.concept = `${target.concept}, ${next.concept}`;
+      target.keyTakeaway = `${target.keyTakeaway}, ${next.keyTakeaway}`;
+      target.sentenceRange = [target.sentenceRange[0], next.sentenceRange[1]];
+      keyMomentsCopy[action.payload] = target;
+      keyMomentsCopy.splice(action.payload + 1, 1);
+      stateCopy.keyMoments = keyMomentsCopy;
+      return stateCopy;
+    }
     case 'MARK_KEY_MOMENT_COMPLETED':
       return { ...state, completedKeyMomentIndices: [...state.completedKeyMomentIndices, action.payload] };
     default:
@@ -97,28 +104,52 @@ const useDashboardItemContext = () => {
 const DashboardItemProvider = context.Provider;
 
 function DashboardItemComponent() {
-  const { src, sentences, keyMoments: origKeyMoments } = Route.useLoaderData()
+  const { mid } = Route.useParams()
+  const { state: { name, videoUrl, sentences, keyMoments: origKeyMoments }, setState: save } = useStoreSlice(mid)
   const [state, dispatch] = useReducer(reducer, { selectedKeyMoment: 0, keyMoments: origKeyMoments, completedKeyMomentIndices: [] })
   const videoRef = useRef<ComponentRef<'video'>>(null)
 
+  useEffect(() => {
+    save(state.keyMoments)
+  }, [state.keyMoments, save])
+
   return <DashboardItemProvider value={{ sentences, origKeyMoments, state, dispatch, videoRef }}>
-    <ResizablePanelGroup direction='horizontal' className='h-full'>
-      <ResizablePanel defaultSize={30} minSize={20} maxSize={40} className='py-2'>
-        <KeyMomentsList />
-      </ResizablePanel>
-      <ResizableHandle />
-      <ResizablePanel defaultSize={30} minSize={20} maxSize={40} className='py-2'>
-        <SentenceList />
-      </ResizablePanel>
-      <ResizableHandle />
-      <ResizablePanel defaultSize={40}>
-        <AspectRatio ratio={16 / 9} className='bg-muted'>
-          <video src={src} controls className='size-full object-cover' ref={videoRef}></video>
-        </AspectRatio>
-        <KeyMomentRangeControls />
-        <KeyMomentVideoControls />
-      </ResizablePanel>
-    </ResizablePanelGroup>
+    <div className='h-full flex flex-col' >
+      <div className='px-6 py-2'>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href='/'>Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild><Link to='/dashboard/'>Dashboard</Link></BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{name}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+      <ResizablePanelGroup direction='horizontal' className='grow'>
+        <ResizablePanel defaultSize={30} minSize={20} maxSize={40} className='py-2'>
+          <KeyMomentsList />
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel defaultSize={30} minSize={20} maxSize={40} className='py-2'>
+          <SentenceList />
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel defaultSize={40}>
+          <AspectRatio ratio={16 / 9} className='bg-muted'>
+            <video src={videoUrl} controls className='size-full object-cover' ref={videoRef}></video>
+          </AspectRatio>
+          <KeyMomentRangeControls />
+          <KeyMomentVideoControls />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
   </DashboardItemProvider>
 }
 
@@ -283,14 +314,17 @@ function KeyMomentsList() {
     </div>
     <ResizablePanel defaultSize={25}>
       <ScrollArea className='px-1 h-full'>
-        <RadioGroup defaultValue='0' onValueChange={(i) => dispatch({ type: 'SELECT_KEY_MOMENT', payload: parseInt(i) })} className="flex flex-col gap-1 justify-start items-start max-w-full p-5">
-          {state.keyMoments.map((moment, i) =>
-            <div className='grid grid-cols-[1rem,1rem,auto,1rem] items-center group gap-2' >
+        <RadioGroup defaultValue='0' onValueChange={(i) => dispatch({ type: 'SELECT_KEY_MOMENT', payload: parseInt(i) })} className="flex flex-col justify-start items-start max-w-full p-5">
+          {state.keyMoments.map((moment, i) => <div className='group flex flex-col'>
+            {i === 0 && <div className='flex self-stretch justify-center invisible group-hover:visible'><InsertKeymoment at={0} /></div>}
+            <div className='grid grid-cols-[1rem,1rem,auto,1rem] items-center gap-2' >
               {state.completedKeyMomentIndices.includes(i) ? <CheckIcon className='size-4' /> : <div />}
               <RadioGroupItem value={`${i}`} id={`id-${i}`} />
-              <Label htmlFor={`id-${i}`}>{moment.title}</Label>
+              <Label htmlFor={`id-${i}`}>{moment.title} <span><KeyMomentDuration index={i} /></span></Label>
               <Button className='size-4 hidden group-hover:inline-block' variant='ghost' size='icon' onClick={() => dispatch({ type: 'REMOVE_KEY_MOMENT', payload: i })}><TrashIcon /></Button>
-            </div>)}
+            </div>
+            <div className='flex self-stretch justify-center invisible group-hover:visible'><InsertKeymoment at={i + 1} />{i != state.keyMoments.length - 1 && <MergeKeyMoments at={i} />}</div>
+          </div>)}
         </RadioGroup>
       </ScrollArea>
     </ResizablePanel>
@@ -299,6 +333,15 @@ function KeyMomentsList() {
       <KeyMomentEditor momentIndex={state.selectedKeyMoment} />
     </ResizablePanel>
   </ResizablePanelGroup>
+}
+
+function KeyMomentDuration({ index }: { index: number }) {
+  const { sentences, state } = useDashboardItemContext()
+
+  const activeSentenceRange = state.keyMoments[index].sentenceRange
+  const duration = sentences[activeSentenceRange[1]].timeRange[1] - sentences[activeSentenceRange[0]].timeRange[0]
+
+  return <span className='text-xs text-muted-foreground'>{secondsToTimecode(duration)}</span>
 }
 
 const keyMomentSchema = z.object({
@@ -323,7 +366,6 @@ function KeyMomentEditor({ momentIndex, isAdding = false }: KeyMomentEditorProps
 
 
   const handleSubmit: SubmitHandler<z.infer<typeof keyMomentSchema>> = ({ index, ...data }) => {
-    console.log(data)
     if (isAdding) {
       dispatch({ type: 'ADD_KEY_MOMENT', payload: { index, keyMoment: data } })
     } else {
@@ -420,4 +462,15 @@ function KeyMomentEditor({ momentIndex, isAdding = false }: KeyMomentEditorProps
       </CardFooter>
     </form>
   </Form>
+}
+
+function InsertKeymoment({ at }: { at: number }) {
+  const { dispatch } = useDashboardItemContext()
+
+  return <Button variant='ghost' size='icon' className='size-4' onClick={() => dispatch({ type: 'ADD_KEY_MOMENT', payload: { index: at, keyMoment: defaultKeyMoment } })}><PlusIcon /></Button>
+}
+
+function MergeKeyMoments({ at }: { at: number }) {
+  const { dispatch } = useDashboardItemContext()
+  return <Button variant='secondary' size='icon' className='size-4' onClick={() => dispatch({ type: 'MERGE_KEY_MOMENTS', payload: at })}><DoubleArrowUpIcon /></Button>
 }
