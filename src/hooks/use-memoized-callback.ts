@@ -1,6 +1,5 @@
-
 /* eslint-disable @typescript-eslint/ban-types */
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef } from "react";
 
 /**
  * Hook for persistent functions. In theory, `useMemoizedCallback` can be used instead of `useCallback`.
@@ -21,8 +20,7 @@ export function useMemoizedCallback<T extends Function>(fn: T) {
 
   const memoizedFn = useRef<Function>();
   if (!memoizedFn.current) {
-    memoizedFn.current = function(this: unknown, ...args: unknown[]) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    memoizedFn.current = function (this: unknown, ...args: unknown[]) {
       return fnRef.current.apply(this, args);
     };
   }

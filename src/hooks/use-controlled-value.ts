@@ -1,9 +1,8 @@
+import { Dispatch, SetStateAction, useMemo, useRef } from "react";
 
-import { Dispatch, SetStateAction, useMemo, useRef } from 'react';
-
-import { useForceRender } from '@/hooks/use-force-render';
-import { useMemoizedCallback } from '@/hooks/use-memoized-callback';
-import { isFunction } from '@/lib/utils';
+import { useForceRender } from "@/hooks/use-force-render";
+import { useMemoizedCallback } from "@/hooks/use-memoized-callback";
+import { isFunction } from "@/lib/utils";
 
 interface Props<T> {
   defaultValue: T;
