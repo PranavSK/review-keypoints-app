@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -7,8 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { KeyMoment, VideoInfo } from "@/lib/loader";
+import { VideoInfo } from "@/lib/loader";
 import { useStore } from "@/lib/store";
+import { secondsToTimecode } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
@@ -32,6 +34,30 @@ const columns = [
     header: "Name",
     cell: (info) => info.getValue(),
   }),
+  columnHelper.accessor("chapter", {
+    header: "Chapter",
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("duration", {
+    header: "Duration",
+    cell: (info) => secondsToTimecode(info.getValue()),
+  }),
+  columnHelper.display({
+    id: "progress",
+    cell: ({ row }) => {
+      const progress = row.original.keyMoments.reduce(
+        (acc, cur) => acc + (cur.isReviewed ? 1 : 0),
+        0,
+      );
+      const max = row.original.keyMoments.length;
+      return (
+        <div>
+          {progress}/{max}
+          <Progress value={progress} max={max} />
+        </div>
+      );
+    },
+  }),
   columnHelper.display({
     id: "actions",
     cell: ({ row }) => (
@@ -47,23 +73,13 @@ const columns = [
 ];
 
 function DashboardList() {
-  const { state, unparse } = useStore();
+  const { state, save } = useStore();
   const data = Object.values(state);
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
-
-  const jsonl = unparse(
-    data.reduce(
-      (acc, info) => {
-        acc[info.mid] = info.keyMoments;
-        return acc;
-      },
-      {} as Record<string, KeyMoment[]>,
-    ),
-  );
 
   return (
     <div className="p-4 space-y-2">
@@ -76,9 +92,9 @@ function DashboardList() {
                   {header.isPlaceholder
                     ? null
                     : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )}
                 </TableHead>
               ))}
             </TableRow>
@@ -108,14 +124,7 @@ function DashboardList() {
         </TableBody>
       </Table>
       <div className="flex justify-end">
-        <Button asChild>
-          <a
-            href={`data:text/plain;charset=utf-8,${encodeURIComponent(jsonl)}`}
-            download="tasks.jsonl"
-          >
-            Save
-          </a>
-        </Button>
+        <Button onClick={save}>Save</Button>
       </div>
     </div>
   );

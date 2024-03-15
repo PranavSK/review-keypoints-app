@@ -15,6 +15,7 @@ interface VideoInfoJSON {
     "End SL": number;
     Concept: string;
     "Key Takeaway": string;
+    "Is Reviewed"?: boolean;
   }[];
 }
 
@@ -36,6 +37,7 @@ export interface KeyMoment {
   sentenceRange: [number, number];
   concept: string;
   keyTakeaway: string;
+  isReviewed: boolean;
 }
 export interface VideoInfo {
   mid: string;
@@ -89,6 +91,7 @@ function unparseKeyMomentJSON(keyMoment: KeyMoment) {
     "End SL": keyMoment.sentenceRange[1] + 1, // 0-indexed to 1-indexed
     Concept: keyMoment.concept,
     "Key Takeaway": keyMoment.keyTakeaway,
+    "Is Reviewed": keyMoment.isReviewed,
   };
 }
 
@@ -161,6 +164,7 @@ function parseKeyMomentsJSON(json: VideoInfoJSON["Key Moment"]): KeyMoment[] {
       sentenceRange: [k["Start SL"] - 1, k["End SL"] - 1], // 1-indexed to 0-indexed
       concept: k.Concept,
       keyTakeaway: k["Key Takeaway"],
+      isReviewed: k["Is Reviewed"] ?? false,
     };
   });
 }

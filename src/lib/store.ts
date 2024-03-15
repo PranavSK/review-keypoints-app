@@ -5,7 +5,7 @@ export type StoreState = Record<string, VideoInfo>;
 const context = createContext<{
   state: StoreState;
   setState: Dispatch<SetStateAction<StoreState>>;
-  unparse: (keyMoments: Record<string, KeyMoment[]>) => string;
+  save: () => void;
 } | null>(null);
 export const StoreProvider = context.Provider;
 export const useStore = () => {
@@ -22,5 +22,5 @@ export const useStoreSlice = (mid: string) => {
     const newState = { ...store.state[mid], keyMoments: newKeyMoments };
     store.setState({ ...store.state, [mid]: newState });
   };
-  return { state: innerStore, setState: innerSetState };
+  return { state: innerStore, setState: innerSetState, save: store.save };
 };

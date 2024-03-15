@@ -13,6 +13,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ComponentRef,
   Dispatch,
+  Fragment,
   RefObject,
   createContext,
   useContext,
@@ -51,7 +52,6 @@ import {
   ReloadIcon,
   TrashIcon,
 } from "@radix-ui/react-icons";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { calculatePercentage, cn, secondsToTimecode } from "@/lib/utils";
 import { useStoreSlice } from "@/lib/store";
@@ -71,7 +71,6 @@ export const Route = createFileRoute("/dashboard/$mid")({
 interface State {
   selectedKeyMoment: number;
   keyMoments: Array<KeyMoment>;
-  completedKeyMomentIndices: Array<number>;
 }
 type Action =
   | { type: "SELECT_KEY_MOMENT"; payload: number }
@@ -90,6 +89,7 @@ const reducer = (state: State, action: Action): State => {
       const keyMomentModified = {
         ...keyMomentsCopy[state.selectedKeyMoment],
         ...action.payload,
+        isReviewed: false,
       };
 
       keyMomentsCopy[state.selectedKeyMoment] = keyMomentModified;
@@ -123,6 +123,7 @@ const reducer = (state: State, action: Action): State => {
       target.concept = `${target.concept}, ${next.concept}`;
       target.keyTakeaway = `${target.keyTakeaway}, ${next.keyTakeaway}`;
       target.sentenceRange = [target.sentenceRange[0], next.sentenceRange[1]];
+      target.isReviewed = false;
       keyMomentsCopy[action.payload] = target;
       keyMomentsCopy.splice(action.payload + 1, 1);
       stateCopy.keyMoments = keyMomentsCopy;
@@ -131,10 +132,9 @@ const reducer = (state: State, action: Action): State => {
     case "MARK_KEY_MOMENT_COMPLETED":
       return {
         ...state,
-        completedKeyMomentIndices: [
-          ...state.completedKeyMomentIndices,
-          action.payload,
-        ],
+        keyMoments: state.keyMoments.map((keyMoment, i) =>
+          i === action.payload ? { ...keyMoment, isReviewed: true } : keyMoment,
+        ),
       };
     default:
       return state;
@@ -149,8 +149,8 @@ function preventRangeOverlap(ranges: KeyMoment[]) {
     .reduceRight((acc, cur) => {
       const [, end] = cur.sentenceRange;
       const prev = acc[0];
-      if (prev && end > prev.sentenceRange[0]) {
-        prev.sentenceRange[0] = end;
+      if (prev && end >= prev.sentenceRange[0]) {
+        prev.sentenceRange[0] = end + 1;
       }
       acc.unshift(cur);
       return acc;
@@ -179,43 +179,25 @@ function DashboardItemComponent() {
   const { mid } = Route.useParams();
   const {
     state: { name, videoUrl, sentences, keyMoments: origKeyMoments },
-    setState: save,
+    setState: updateList,
+    save,
   } = useStoreSlice(mid);
   const [state, dispatch] = useReducer(reducer, {
     selectedKeyMoment: 0,
     keyMoments: origKeyMoments,
-    completedKeyMomentIndices: [],
   });
   const videoRef = useRef<ComponentRef<"video">>(null);
 
   useEffect(() => {
-    save(state.keyMoments);
-  }, [state.keyMoments, save]);
+    updateList(state.keyMoments);
+  }, [state.keyMoments, updateList]);
 
   return (
     <DashboardItemProvider
       value={{ sentences, origKeyMoments, state, dispatch, videoRef }}
     >
       <div className="h-full flex flex-col">
-        <div className="px-6 py-2">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/">Home</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink asChild>
-                  <Link to="/dashboard/">Dashboard</Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{name}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
+        <Header name={name} />
         <ResizablePanelGroup direction="horizontal" className="grow">
           <ResizablePanel
             defaultSize={30}
@@ -246,10 +228,53 @@ function DashboardItemComponent() {
             </AspectRatio>
             <KeyMomentRangeControls />
             <KeyMomentVideoControls />
+            <VideoFooter save={save} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
     </DashboardItemProvider>
+  );
+}
+
+function VideoFooter({ save }: { save: () => void }) {
+  useEffect(() => {
+    const handleSaveKey = (e: KeyboardEvent) => {
+      if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        save();
+      }
+    };
+    window.addEventListener("keydown", handleSaveKey);
+    return () => window.removeEventListener("keydown", handleSaveKey);
+  }, []);
+  return (
+    <div className="p-4 flex justify-end items-center">
+      <Button onClick={save}>Save</Button>
+    </div>
+  );
+}
+
+function Header({ name }: { name: string }) {
+  return (
+    <div className="px-6 py-2">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/">Home</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link to="/dashboard/">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{name}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+    </div>
   );
 }
 
@@ -353,7 +378,10 @@ function KeyMomentRangeControls() {
   const activeSentenceRange =
     state.keyMoments[state.selectedKeyMoment].sentenceRange;
   const handleSliderValueChange = (value: [number, number]) => {
-    dispatch({ type: "MODIFY_KEY_MOMENT", payload: { sentenceRange: value } });
+    dispatch({
+      type: "MODIFY_KEY_MOMENT",
+      payload: { sentenceRange: [value[0], value[1] - 1] },
+    });
   };
 
   const min = 0;
@@ -365,7 +393,7 @@ function KeyMomentRangeControls() {
       min={0}
       max={sentences.length - 1}
       step={1}
-      value={activeSentenceRange}
+      value={[activeSentenceRange[0], activeSentenceRange[1] + 1]}
       onValueChange={handleSliderValueChange}
     >
       <SliderPrimitive.Track
@@ -374,7 +402,7 @@ function KeyMomentRangeControls() {
       >
         {state.keyMoments.map(({ title, sentenceRange }, i) => {
           const start = calculatePercentage(sentenceRange[0], { min, max });
-          const end = calculatePercentage(sentenceRange[1], { min, max });
+          const end = calculatePercentage(sentenceRange[1] + 1, { min, max });
           return (
             <span
               key={i}
@@ -434,18 +462,18 @@ function SentenceList() {
     return groups;
   }, [sentences, state.keyMoments]);
 
-  const scrollAnchor = useRef<ComponentRef<"li">>(null);
+  const scrollAnchors = useRef<ComponentRef<"li">[]>([]);
   const scrollContainer = useRef<ComponentRef<typeof ScrollArea>>(null);
 
   useEffect(() => {
-    const anchor = scrollAnchor.current;
+    const anchor = scrollAnchors.current[state.selectedKeyMoment];
     const container = scrollContainer.current;
     if (!anchor || !container) return;
     const { top } = anchor.getBoundingClientRect();
     const { top: containerTop, height: containerHeight } =
       container.getBoundingClientRect();
     const distanceRatio = (top - containerTop) / containerHeight;
-    scrollAnchor.current?.scrollIntoView({
+    anchor.scrollIntoView({
       behavior: "smooth",
       block: distanceRatio > 0.5 ? "start" : "nearest",
     });
@@ -453,17 +481,19 @@ function SentenceList() {
 
   return (
     <>
-      <h2 className="text-lg font-semibold tracking-tight px-7">Sentences</h2>
-      <ScrollArea className="px-1 h-full" ref={scrollContainer}>
+      <h2 className="text-lg font-semibold tracking-tight px-7 h-8">
+        Sentences
+      </h2>
+      <ScrollArea className="px-1 h-[calc(100%-2rem)]" ref={scrollContainer}>
         <ol className="list-decimal px-2 pb-6 flex flex-col gap-2 [&_li]:ml-8">
           {groups.map(({ keyMomentIndex, sentences }, i) => (
-            <>
+            <Fragment key={i}>
               <div
                 key={i}
                 className={cn(
                   "border-l",
                   keyMomentIndex !== state.selectedKeyMoment &&
-                    "text-muted-foreground",
+                  "text-muted-foreground",
                   keyMomentIndex === -1 && "text-destructive",
                 )}
               >
@@ -471,18 +501,18 @@ function SentenceList() {
                 {sentences.map((sentence, j) => (
                   <li
                     key={j}
-                    ref={
-                      i === state.selectedKeyMoment && j === 0
-                        ? scrollAnchor
-                        : undefined
-                    }
+                    ref={(el) => {
+                      if (j === 0 && keyMomentIndex > -1 && el)
+                        scrollAnchors.current[keyMomentIndex] = el;
+                    }}
+                    className="snap-start"
                   >
                     {sentence}
                   </li>
                 ))}
               </div>
               {i != groups.length - 1 && <Separator />}
-            </>
+            </Fragment>
           ))}
         </ol>
       </ScrollArea>
@@ -494,21 +524,9 @@ function KeyMomentsList() {
   const { state, dispatch } = useDashboardItemContext();
   return (
     <ResizablePanelGroup direction="vertical">
-      <div className="flex flex-row justify-between items-center px-6">
-        <h2 className="text-lg font-semibold tracking-tight">Key Moments</h2>
-        <Dialog>
-          <div className="flex flex-row justify-between items-center">
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <PlusIcon />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <KeyMomentEditor momentIndex={0} isAdding />
-            </DialogContent>
-          </div>
-        </Dialog>
-      </div>
+      <h2 className="text-lg font-semibold tracking-tight px-6 h-8">
+        Key Moments
+      </h2>
       <ResizablePanel defaultSize={25}>
         <ScrollArea className="px-1 h-full">
           <RadioGroup
@@ -519,14 +537,14 @@ function KeyMomentsList() {
             className="flex flex-col justify-start items-start max-w-full p-5"
           >
             {state.keyMoments.map((moment, i) => (
-              <div className="group flex flex-col">
+              <div key={i} className="group flex flex-col">
                 {i === 0 && (
                   <div className="flex self-stretch justify-center invisible group-hover:visible">
                     <InsertKeymoment at={0} />
                   </div>
                 )}
                 <div className="grid grid-cols-[1rem,1rem,auto,1rem] items-center gap-2">
-                  {state.completedKeyMomentIndices.includes(i) ? (
+                  {moment.isReviewed ? (
                     <CheckIcon className="size-4" />
                   ) : (
                     <div />
@@ -584,43 +602,34 @@ function KeyMomentDuration({ index }: { index: number }) {
 }
 
 const keyMomentSchema = z.object({
-  index: z.number().default(0),
   title: z.string().default("Title"),
   concept: z.string().default("Concept"),
   keyTakeaway: z.string().default("Key Takeaway"),
   sentenceRange: z.tuple([z.number(), z.number()]).default([0, 0]),
+  isReviewed: z.boolean().default(false),
 });
 const defaultKeyMoment = keyMomentSchema.parse({});
 interface KeyMomentEditorProps {
   momentIndex: number;
-  isAdding?: boolean;
 }
-function KeyMomentEditor({
-  momentIndex,
-  isAdding = false,
-}: KeyMomentEditorProps) {
+function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
   const { sentences, origKeyMoments, state, dispatch } =
     useDashboardItemContext();
   const sentenceCount = sentences.length;
-  const moment = isAdding ? defaultKeyMoment : state.keyMoments[momentIndex];
+  const moment = state.keyMoments[momentIndex];
 
   const form = useForm<z.infer<typeof keyMomentSchema>>({
-    defaultValues: { index: momentIndex, ...moment },
+    defaultValues: moment,
   });
 
   useEffect(() => {
-    form.reset({ index: momentIndex, ...moment });
+    form.reset(moment);
   }, [moment, momentIndex, form]);
 
-  const handleSubmit: SubmitHandler<z.infer<typeof keyMomentSchema>> = ({
-    index,
-    ...data
-  }) => {
-    if (isAdding) {
-      dispatch({ type: "ADD_KEY_MOMENT", payload: { index, keyMoment: data } });
-    } else {
-      dispatch({ type: "MODIFY_KEY_MOMENT", payload: data });
-    }
+  const handleSubmit: SubmitHandler<z.infer<typeof keyMomentSchema>> = (
+    data,
+  ) => {
+    dispatch({ type: "MODIFY_KEY_MOMENT", payload: data });
   };
 
   return (
@@ -636,25 +645,19 @@ function KeyMomentEditor({
 
         <ScrollArea className="h-full">
           <CardContent className="flex-1 space-y-4">
-            <FormField
-              control={form.control}
-              name="index"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Index</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={state.keyMoments.length}
-                      {...field}
-                      disabled={!isAdding}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <FormItem>
+              <FormLabel>Index</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min="0"
+                  max={state.keyMoments.length}
+                  disabled
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+
             <FormField
               control={form.control}
               name="title"
@@ -736,47 +739,36 @@ function KeyMomentEditor({
           </CardContent>
         </ScrollArea>
         <CardFooter className="flex justify-end gap-1 pt-1">
-          {isAdding ? (
-            <Button type="submit" className="relative">
-              {form.formState.isDirty && (
-                <DotFilledIcon className="size-6 absolute -top-2 -right-2" />
-              )}
-              Add
-            </Button>
-          ) : (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  dispatch({
-                    type: "MODIFY_KEY_MOMENT",
-                    payload: origKeyMoments[momentIndex],
-                  })
-                }
-              >
-                Reset
-              </Button>
-              <Button type="submit" variant="secondary" className="relative">
-                {form.formState.isDirty && (
-                  <DotFilledIcon className="size-6 absolute -top-2 -right-2" />
-                )}
-                Update
-              </Button>
-              <Button
-                type="button"
-                variant="default"
-                onClick={() =>
-                  dispatch({
-                    type: "MARK_KEY_MOMENT_COMPLETED",
-                    payload: momentIndex,
-                  })
-                }
-              >
-                Mark Reviewed
-              </Button>
-            </>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              dispatch({
+                type: "MODIFY_KEY_MOMENT",
+                payload: origKeyMoments[momentIndex],
+              })
+            }
+          >
+            Reset
+          </Button>
+          <Button type="submit" variant="secondary" className="relative">
+            {form.formState.isDirty && (
+              <DotFilledIcon className="size-6 absolute -top-2 -right-2" />
+            )}
+            Update
+          </Button>
+          <Button
+            type="button"
+            variant="default"
+            onClick={() =>
+              dispatch({
+                type: "MARK_KEY_MOMENT_COMPLETED",
+                payload: momentIndex,
+              })
+            }
+          >
+            Mark Reviewed
+          </Button>
         </CardFooter>
       </form>
     </Form>
@@ -784,19 +776,33 @@ function KeyMomentEditor({
 }
 
 function InsertKeymoment({ at }: { at: number }) {
-  const { dispatch } = useDashboardItemContext();
+  const { sentences, state, dispatch } = useDashboardItemContext();
+  const nextAvailableSentenceRange: [number, number] = useMemo(() => {
+    const currentEnd = state.keyMoments[at - 1]?.sentenceRange[1] ?? -1;
+    const nextStart =
+      (state.keyMoments[at]?.sentenceRange[0] ?? sentences.length) - 1;
+    console.log("at", at, "\tstart ", currentEnd + 1, "\tEnd", nextStart);
+    return [currentEnd + 1, nextStart];
+  }, [sentences, state.keyMoments, at]);
 
   return (
     <Button
       variant="ghost"
       size="icon"
       className="size-4"
-      onClick={() =>
-        dispatch({
-          type: "ADD_KEY_MOMENT",
-          payload: { index: at, keyMoment: defaultKeyMoment },
-        })
-      }
+      onClick={() => {
+        if (nextAvailableSentenceRange[1] - nextAvailableSentenceRange[0] >= 0)
+          dispatch({
+            type: "ADD_KEY_MOMENT",
+            payload: {
+              index: at,
+              keyMoment: {
+                ...defaultKeyMoment,
+                sentenceRange: nextAvailableSentenceRange,
+              },
+            },
+          });
+      }}
     >
       <PlusIcon />
     </Button>

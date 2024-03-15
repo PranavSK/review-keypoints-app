@@ -1,45 +1,49 @@
-import { Input } from "@/components/ui/input";
-import { initDatabaseFromText, unparseInfoJSON } from "@/lib/loader";
+import { Button } from "@/components/ui/button";
+import { KeyMoment, initDatabaseFromText, unparseInfoJSON } from "@/lib/loader";
 import { StoreProvider, StoreState } from "@/lib/store";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { ChangeEvent, useState } from "react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
 function Dashboard() {
   const [state, setState] = useState<StoreState>({});
   const [text, setText] = useState<string>("");
+  const [path, setPath] = useState<string>("");
 
-  const handleChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
+  const handleClick = async () => {
+    const inputPath = await window.api.getOpenPath(path ? path : undefined);
+    if (!inputPath) return;
+    setPath(inputPath);
+    const text = await window.api.getSession(inputPath);
     setText(text);
     const data = await initDatabaseFromText(text);
     setState(data);
   };
 
+  const save = () => {
+    const jsonl = unparseInfoJSON(
+      text,
+      Object.values(state).reduce(
+        (acc, info) => {
+          acc[info.mid] = info.keyMoments;
+          return acc;
+        },
+        {} as Record<string, KeyMoment[]>,
+      ),
+    );
+    window.api.saveSession(jsonl, path);
+  };
+
   return (
     <div className="h-screen">
       {Object.entries(state).length ? (
-        <StoreProvider
-          value={{
-            state,
-            setState,
-            unparse: (keyMoments) => unparseInfoJSON(text, keyMoments),
-          }}
-        >
+        <StoreProvider value={{ state, setState, save }}>
           <Outlet />
         </StoreProvider>
       ) : (
         <div className="container p-8">
-          <Input
-            type="file"
-            onChange={(e) => {
-              void handleChange(e);
-            }}
-          />
+          <Button onClick={handleClick}>Load session file</Button>
         </div>
       )}
     </div>
