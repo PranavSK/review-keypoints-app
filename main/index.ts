@@ -2,7 +2,9 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { readFile, writeFile } from "fs/promises";
-// import icon from '../resources/icon.png?asset'
+// import { updateElectronApp } from "update-electron-app";
+//
+// updateElectronApp();
 
 function createWindow(): void {
   // Create the browser window.
@@ -11,7 +13,7 @@ function createWindow(): void {
     height: 800,
     show: false,
     autoHideMenuBar: true,
-    // icon: process.platform === 'linux' ? icon : undefined,
+    icon: process.platform === "linux" ? "../resources/icon.png" : undefined,
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,

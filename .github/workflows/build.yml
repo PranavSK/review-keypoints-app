@@ -49,10 +49,8 @@ jobs:
         run: npm version --no-git-tag-version $GITHUB_REF_NAME
 
       - name: Build/release Electron app
-        uses: paneron/action-electron-builder@v1.8.1
-        with:
+        env:
           # GitHub token, automatically provided to the action
           # (No need to define this secret in the repo settings)
-          github_token: ${{ secrets.github_token }}
-          package_manager: pnpm
-          release: true
+          GITHUB_TOKEN: ${{ secrets.github_token }}
+        run: pnpm publish
