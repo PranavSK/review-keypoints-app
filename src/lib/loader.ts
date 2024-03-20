@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import srtParser2 from "srt-parser-2";
 
 interface VideoInfoJSON {
   MID: string;
@@ -8,7 +9,8 @@ interface VideoInfoJSON {
   Chapter: string;
   "Duration (minute)": number;
   "Video Path": string;
-  "Sentences Path": string;
+  "Sentences Path"?: string;
+  "SRT Path": string;
   "Key Moment":
   | {
     Title: string;
@@ -98,7 +100,17 @@ function unparseKeyMomentJSON(keyMoment: KeyMoment) {
 }
 
 async function parseInfoJSON(json: VideoInfoJSON): Promise<VideoInfo> {
-  const sentences = await parseSentencesJSON(json["Sentences Path"]);
+  let sentences: Sentence[];
+  if (json["Sentences Path"] == null) {
+    if (json["SRT Path"] == null) {
+      throw new Error(
+        `No sentences path or SRT path for video ${json["Video Name"]}`,
+      );
+    }
+    sentences = await parseSentencesSRT(json["SRT Path"]);
+  } else {
+    sentences = (await parseSentencesJSON(json["Sentences Path"]))[json.MID];
+  }
   return {
     mid: json.MID,
     name: json["Video Name"],
@@ -107,9 +119,24 @@ async function parseInfoJSON(json: VideoInfoJSON): Promise<VideoInfo> {
     chapter: json.Chapter,
     duration: json["Duration (minute)"] * 60,
     videoUrl: json["Video Path"],
-    sentences: sentences[json.MID],
+    sentences,
     keyMoments: parseKeyMomentsJSON(json["Key Moment"]),
   };
+}
+
+const srtParser = new srtParser2();
+async function parseSentencesSRT(url: string): Promise<Sentence[]> {
+  const response = await fetch(url);
+  const text = await response.text();
+  const parsed = srtParser.fromSrt(text);
+  return parsed
+    .sort((a, b) => parseInt(a.id) - parseInt(b.id))
+    .map((s) => {
+      return {
+        timeRange: [s.startSeconds, s.endSeconds],
+        value: s.text,
+      };
+    });
 }
 
 const cachedSentences = new Map<string, Record<string, Sentence[]>>();
@@ -160,13 +187,15 @@ function parseTimecode(code: string) {
 }
 
 function parseKeyMomentsJSON(json: VideoInfoJSON["Key Moment"]): KeyMoment[] {
-  return json?.map((k) => {
-    return {
-      title: k.Title,
-      sentenceRange: [k["Start SL"] - 1, k["End SL"] - 1], // 1-indexed to 0-indexed
-      concept: k.Concept,
-      keyTakeaway: k["Key Takeaway"],
-      isReviewed: k["Is Reviewed"] ?? false,
-    };
-  }) ?? [];
+  return (
+    json?.map((k) => {
+      return {
+        title: k.Title,
+        sentenceRange: [k["Start SL"] - 1, k["End SL"] - 1], // 1-indexed to 0-indexed
+        concept: k.Concept,
+        keyTakeaway: k["Key Takeaway"],
+        isReviewed: k["Is Reviewed"] ?? false,
+      };
+    }) ?? []
+  );
 }

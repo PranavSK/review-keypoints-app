@@ -5,6 +5,12 @@ export type StoreState = Record<string, VideoInfo>;
 const context = createContext<{
   state: StoreState;
   setState: Dispatch<SetStateAction<StoreState>>;
+  path: string;
+  setPath: Dispatch<SetStateAction<string>>;
+  text: string;
+  setText: Dispatch<SetStateAction<string>>;
+  editMid: string | null;
+  setEditMid: Dispatch<SetStateAction<string | null>>;
   save: () => void;
 } | null>(null);
 export const StoreProvider = context.Provider;

@@ -12,18 +12,13 @@ import { VideoInfo } from "@/lib/loader";
 import { useStore } from "@/lib/store";
 import { secondsToTimecode } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
-import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { useState } from "react";
-
-export const Route = createFileRoute("/")({
-  component: DashboardList,
-});
+import { FC } from "react";
 
 const columnHelper = createColumnHelper<VideoInfo>();
 const columns = [
@@ -61,19 +56,24 @@ const columns = [
   }),
   columnHelper.display({
     id: "actions",
-    cell: ({ row }) => (
-      <div className="flex gap-2">
-        <Button variant="ghost" size="icon" asChild>
-          <Link to="/$mid" params={{ mid: row.original.mid }}>
+    cell: ({ row }) => {
+      const { setEditMid } = useStore();
+      return (
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setEditMid(row.original.mid)}
+          >
             <EnterIcon />
-          </Link>
-        </Button>
-      </div>
-    ),
+          </Button>
+        </div>
+      );
+    },
   }),
 ];
 
-function DashboardList() {
+export const DashboardList: FC = () => {
   const { state, save } = useStore();
   const data = Object.values(state);
   const table = useReactTable({

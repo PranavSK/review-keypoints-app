@@ -5,7 +5,7 @@ import { electronAPI } from "@electron-toolkit/preload";
 const api = {
   getOpenPath: (defaultPath?: string) =>
     ipcRenderer.invoke("get-open-path", defaultPath) as Promise<string>,
-  getSavePath: (defaultPath: string) =>
+  getSavePath: (defaultPath?: string) =>
     ipcRenderer.invoke("get-save-path", defaultPath) as Promise<string>,
   getSession: (path: string) =>
     ipcRenderer.invoke("get-session", path) as Promise<string>,

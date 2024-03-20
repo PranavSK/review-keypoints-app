@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -9,10 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import { KeyMoment, Sentence } from "@/lib/loader";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import * as SliderPrimitive from "@radix-ui/react-slider";
-import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ComponentRef,
   Dispatch,
+  FC,
   Fragment,
   RefObject,
   createContext,
@@ -43,6 +43,8 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
+  CaretLeftIcon,
+  CaretRightIcon,
   CheckIcon,
   DotFilledIcon,
   DoubleArrowUpIcon,
@@ -54,7 +56,7 @@ import {
 } from "@radix-ui/react-icons";
 import { Slider } from "@/components/ui/slider";
 import { calculatePercentage, cn, secondsToTimecode } from "@/lib/utils";
-import { useStoreSlice } from "@/lib/store";
+import { useStore, useStoreSlice } from "@/lib/store";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -64,10 +66,11 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
-
-export const Route = createFileRoute("/$mid")({
-  component: DashboardItemComponent,
-});
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface State {
   selectedKeyMoment: number;
@@ -176,13 +179,14 @@ const useDashboardItemContext = () => {
 };
 const DashboardItemProvider = context.Provider;
 
-function DashboardItemComponent() {
-  const { mid } = Route.useParams();
+export const DashboardItem: FC = () => {
+  const { editMid } = useStore();
+  if (!editMid) throw new Error("mid should not be null here");
   const {
     state: { name, videoUrl, sentences, keyMoments: origKeyMoments },
     setState: updateList,
     save,
-  } = useStoreSlice(mid);
+  } = useStoreSlice(editMid); // mid shoul not be null here
   const [state, dispatch] = useReducer(reducer, {
     selectedKeyMoment: 0,
     keyMoments: origKeyMoments,
@@ -227,15 +231,20 @@ function DashboardItemComponent() {
                 ref={videoRef}
               ></video>
             </AspectRatio>
-            <KeyMomentRangeControls />
-            <KeyMomentVideoControls />
+            {state.keyMoments.length > 0 && (
+              <>
+                <KeyMomentRangeControls />
+                <KeyMomentVideoControls />
+              </>
+            )}
+            <SentenceControls />
             <VideoFooter save={save} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
     </DashboardItemProvider>
   );
-}
+};
 
 function VideoFooter({ save }: { save: () => void }) {
   useEffect(() => {
@@ -256,13 +265,16 @@ function VideoFooter({ save }: { save: () => void }) {
 }
 
 function Header({ name }: { name: string }) {
+  const { setEditMid } = useStore();
   return (
     <div className="px-6 py-2">
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link to="/">Dashboard</Link>
+              <Button variant="link" onClick={() => setEditMid(null)}>
+                Dashboard
+              </Button>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -271,6 +283,50 @@ function Header({ name }: { name: string }) {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
+    </div>
+  );
+}
+
+function SentenceControls() {
+  const { sentences, videoRef } = useDashboardItemContext();
+  const handlePrevious = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
+    if (sentence < 1) return;
+    video.currentTime = sentences[sentence - 1].timeRange[0];
+  };
+  const handleNext = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
+    if (sentence < 0 || sentence >= sentences.length - 1) return;
+    video.currentTime = sentences[sentence + 1].timeRange[0];
+  };
+  return (
+    <div className="flex items-center p-4 gap-2">
+      <Tooltip>
+        <TooltipTrigger
+          onClick={handlePrevious}
+          className={buttonVariants({ variant: "ghost", size: "rounded-icon" })}
+        >
+          <CaretLeftIcon />
+        </TooltipTrigger>
+        <TooltipContent>Previous Sentence</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          onClick={handleNext}
+          className={buttonVariants({ variant: "ghost", size: "rounded-icon" })}
+        >
+          <CaretRightIcon />
+        </TooltipTrigger>
+        <TooltipContent>Next Sentence</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -459,11 +515,11 @@ function SentenceList() {
     let index = 0;
     for (let i = 0; i < sentences.length; i++) {
       const { value } = sentences[i];
-      if (i === state.keyMoments[index].sentenceRange[0]) {
+      if (i === state.keyMoments[index]?.sentenceRange[0]) {
         pushGroup();
         currentGroup.keyMomentIndex = index;
         currentGroup.sentences.push(value);
-      } else if (i === state.keyMoments[index].sentenceRange[1]) {
+      } else if (i === state.keyMoments[index]?.sentenceRange[1]) {
         currentGroup.sentences.push(value);
         pushGroup();
         index++;
@@ -537,9 +593,12 @@ function KeyMomentsList() {
   const { state, dispatch } = useDashboardItemContext();
   return (
     <ResizablePanelGroup direction="vertical">
-      <h2 className="text-lg font-semibold tracking-tight px-6 h-8">
-        Key Moments
-      </h2>
+      <div className="flex items-center justify-between px-6">
+        <h2 className="text-lg font-semibold tracking-tight h-8">
+          Key Moments
+        </h2>
+        {state.keyMoments.length == 0 && <InsertKeymoment at={0} />}
+      </div>
       <ResizablePanel defaultSize={25}>
         <ScrollArea className="px-1 h-full">
           <RadioGroup
@@ -547,15 +606,10 @@ function KeyMomentsList() {
             onValueChange={(i) =>
               dispatch({ type: "SELECT_KEY_MOMENT", payload: parseInt(i) })
             }
-            className="flex flex-col justify-start items-start max-w-full p-5"
+            className="flex flex-col justify-start items-start max-w-full px-5 py-2"
           >
             {state.keyMoments.map((moment, i) => (
               <div key={i} className="group flex flex-col">
-                {i === 0 && (
-                  <div className="flex self-stretch justify-center invisible group-hover:visible">
-                    <InsertKeymoment at={0} />
-                  </div>
-                )}
                 <div className="grid grid-cols-[1rem,1rem,auto,1rem] items-center gap-2">
                   {moment.isReviewed ? (
                     <CheckIcon className="size-4" />
@@ -592,9 +646,11 @@ function KeyMomentsList() {
         </ScrollArea>
       </ResizablePanel>
       <ResizableHandle />
-      <ResizablePanel>
-        <KeyMomentEditor momentIndex={state.selectedKeyMoment} />
-      </ResizablePanel>
+      {state.keyMoments.length && (
+        <ResizablePanel>
+          <KeyMomentEditor momentIndex={state.selectedKeyMoment} />
+        </ResizablePanel>
+      )}
     </ResizablePanelGroup>
   );
 }
@@ -658,19 +714,6 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
 
         <ScrollArea className="h-full">
           <CardContent className="flex-1 space-y-4">
-            <FormItem>
-              <FormLabel>Index</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  min="0"
-                  max={state.keyMoments.length}
-                  disabled
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-
             <FormField
               control={form.control}
               name="title"
