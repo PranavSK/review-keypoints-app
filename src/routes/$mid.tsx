@@ -63,6 +63,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 
 export const Route = createFileRoute("/$mid")({
   component: DashboardItemComponent,
@@ -290,6 +291,13 @@ function KeyMomentVideoControls() {
   const isKeymomentModeRef = useRef(false);
   const triggerKeymomentModeRef = useRef(false);
 
+  const handleSliderValueChange = useDebouncedCallback(([value]: number[]) => {
+    setCurrentTime(value);
+    if (videoRef.current) {
+      videoRef.current.currentTime = value;
+    }
+  }, 100);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -372,12 +380,7 @@ function KeyMomentVideoControls() {
         max={activeTimeRange[1]}
         step={0.01}
         value={[currentTime]}
-        onValueChange={([value]) => {
-          setCurrentTime(value);
-          if (videoRef.current) {
-            videoRef.current.currentTime = value;
-          }
-        }}
+        onValueChange={handleSliderValueChange}
       />
     </div>
   );
