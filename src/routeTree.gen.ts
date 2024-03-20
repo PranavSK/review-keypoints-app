@@ -11,31 +11,19 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
-import { Route as DashboardImport } from './routes/dashboard'
+import { Route as MidImport } from './routes/$mid'
 import { Route as IndexImport } from './routes/index'
-import { Route as DashboardIndexImport } from './routes/dashboard.index'
-import { Route as DashboardMidImport } from './routes/dashboard.$mid'
 
 // Create/Update Routes
 
-const DashboardRoute = DashboardImport.update({
-  path: '/dashboard',
+const MidRoute = MidImport.update({
+  path: '/$mid',
   getParentRoute: () => rootRoute,
 } as any)
 
 const IndexRoute = IndexImport.update({
   path: '/',
   getParentRoute: () => rootRoute,
-} as any)
-
-const DashboardIndexRoute = DashboardIndexImport.update({
-  path: '/',
-  getParentRoute: () => DashboardRoute,
-} as any)
-
-const DashboardMidRoute = DashboardMidImport.update({
-  path: '/$mid',
-  getParentRoute: () => DashboardRoute,
 } as any)
 
 // Populate the FileRoutesByPath interface
@@ -46,26 +34,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexImport
       parentRoute: typeof rootRoute
     }
-    '/dashboard': {
-      preLoaderRoute: typeof DashboardImport
+    '/$mid': {
+      preLoaderRoute: typeof MidImport
       parentRoute: typeof rootRoute
-    }
-    '/dashboard/$mid': {
-      preLoaderRoute: typeof DashboardMidImport
-      parentRoute: typeof DashboardImport
-    }
-    '/dashboard/': {
-      preLoaderRoute: typeof DashboardIndexImport
-      parentRoute: typeof DashboardImport
     }
   }
 }
 
 // Create and export the route tree
 
-export const routeTree = rootRoute.addChildren([
-  IndexRoute,
-  DashboardRoute.addChildren([DashboardMidRoute, DashboardIndexRoute]),
-])
+export const routeTree = rootRoute.addChildren([IndexRoute, MidRoute])
 
 /* prettier-ignore-end */

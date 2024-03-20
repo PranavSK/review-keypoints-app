@@ -11,6 +11,7 @@ const api = {
     ipcRenderer.invoke("get-session", path) as Promise<string>,
   saveSession: (data: string, path: string) =>
     ipcRenderer.send("save-session", { data, path }),
+  openDevTools: () => ipcRenderer.send("open-dev-tools"),
 };
 
 export type Api = typeof api;

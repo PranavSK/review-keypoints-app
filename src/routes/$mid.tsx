@@ -64,7 +64,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-export const Route = createFileRoute("/dashboard/$mid")({
+export const Route = createFileRoute("/$mid")({
   component: DashboardItemComponent,
 });
 
@@ -260,12 +260,8 @@ function Header({ name }: { name: string }) {
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink href="/">Home</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link to="/dashboard/">Dashboard</Link>
+              <Link to="/">Dashboard</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -291,12 +287,22 @@ function KeyMomentVideoControls() {
   );
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const isKeymomentModeRef = useRef(false);
+  const triggerKeymomentModeRef = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const handlePlay = () => setIsPlaying(true);
+    const handlePlay = () => {
+      if (triggerKeymomentModeRef.current) {
+        triggerKeymomentModeRef.current = false;
+        isKeymomentModeRef.current = true;
+      } else {
+        isKeymomentModeRef.current = false;
+      }
+      setIsPlaying(true);
+    };
     const handlePause = () => setIsPlaying(false);
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
@@ -313,7 +319,10 @@ function KeyMomentVideoControls() {
     video.currentTime = activeTimeRange[0];
     const handleTimeupdate = () => {
       setCurrentTime(video.currentTime);
-      if (video.currentTime >= activeTimeRange[1]) {
+      if (
+        isKeymomentModeRef.current &&
+        video.currentTime >= activeTimeRange[1]
+      ) {
         video.pause();
         video.currentTime = activeTimeRange[0];
       }
@@ -340,6 +349,7 @@ function KeyMomentVideoControls() {
           size="rounded-icon"
           className="shrink-0"
           onClick={() => {
+            triggerKeymomentModeRef.current = true;
             void videoRef.current?.play();
           }}
         >
@@ -738,10 +748,11 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
             />
           </CardContent>
         </ScrollArea>
-        <CardFooter className="flex justify-end gap-1 pt-1">
+        <CardFooter className="flex justify-end gap-2 pt-1">
           <Button
             type="button"
             variant="outline"
+            size="sm"
             onClick={() =>
               dispatch({
                 type: "MODIFY_KEY_MOMENT",
@@ -751,7 +762,12 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
           >
             Reset
           </Button>
-          <Button type="submit" variant="secondary" className="relative">
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
+            className="relative"
+          >
             {form.formState.isDirty && (
               <DotFilledIcon className="size-6 absolute -top-2 -right-2" />
             )}
@@ -760,6 +776,7 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
           <Button
             type="button"
             variant="default"
+            size="sm"
             onClick={() =>
               dispatch({
                 type: "MARK_KEY_MOMENT_COMPLETED",
@@ -781,7 +798,6 @@ function InsertKeymoment({ at }: { at: number }) {
     const currentEnd = state.keyMoments[at - 1]?.sentenceRange[1] ?? -1;
     const nextStart =
       (state.keyMoments[at]?.sentenceRange[0] ?? sentences.length) - 1;
-    console.log("at", at, "\tstart ", currentEnd + 1, "\tEnd", nextStart);
     return [currentEnd + 1, nextStart];
   }, [sentences, state.keyMoments, at]);
 

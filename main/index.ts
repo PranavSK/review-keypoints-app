@@ -29,7 +29,10 @@ function createWindow(): void {
       if (result.canceled) return;
       return (path = result.filePaths[0]);
     } catch (error) {
-      console.error(`System file dialog error: ${error}`);
+      dialog.showErrorBox(
+        "System file dialog error",
+        `Failed to get open path: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
       return;
     }
   });
@@ -44,7 +47,10 @@ function createWindow(): void {
       if (result.canceled) return;
       return (path = result.filePath);
     } catch (error) {
-      console.error(`System file dialog error: ${error}`);
+      dialog.showErrorBox(
+        "System file dialog error",
+        `Failed to get save path: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
       return;
     }
   });
@@ -54,7 +60,10 @@ function createWindow(): void {
       const file = await readFile(path, { encoding: "utf-8" });
       return file;
     } catch (error) {
-      console.log(`System file dialog error: ${error}`);
+      dialog.showErrorBox(
+        "Invalid Open Path",
+        `Read file at ${path} failed with the following error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
       return;
     }
   });
@@ -62,14 +71,27 @@ function createWindow(): void {
   ipcMain.on(
     "save-session",
     async (_, { data, path }: { data: string; path: string }) => {
+      if (!data) {
+        dialog.showErrorBox(
+          "Invalid Save Data",
+          "Save data is empty, please check your data",
+        );
+        return;
+      }
+      if (!path) {
+        dialog.showErrorBox(
+          "Invalid Save Path",
+          "Save path is empty, please check your path",
+        );
+        return;
+      }
       try {
         await writeFile(path, data);
       } catch (error) {
-        dialog.showMessageBox(mainWindow, {
-          type: "warning",
-          title: "Invalid Save Path",
-          message: `Write file failed with following error: ${error}`,
-        });
+        dialog.showErrorBox(
+          "Invalid Save Path",
+          `Write file failed with following error: ${error}`,
+        );
       }
     },
   );
@@ -84,7 +106,9 @@ function createWindow(): void {
   });
 
   // if (is.dev) {
-  mainWindow.webContents.openDevTools();
+  ipcMain.on("open-dev-tools", () => {
+    mainWindow.webContents.openDevTools();
+  });
   // }
 
   // HMR for renderer base on electron-vite cli.
@@ -92,7 +116,7 @@ function createWindow(): void {
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     void mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    void mainWindow.loadFile(join(__dirname, "index.html"));
+    void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
 }
 
@@ -125,6 +149,10 @@ app
   })
   .catch((error) => {
     console.error("Error:", error);
+    dialog.showErrorBox(
+      "App initialization error",
+      `Failed to initialize app: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
     app.quit();
   });
 

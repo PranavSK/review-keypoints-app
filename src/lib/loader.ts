@@ -9,14 +9,16 @@ interface VideoInfoJSON {
   "Duration (minute)": number;
   "Video Path": string;
   "Sentences Path": string;
-  "Key Moment": {
+  "Key Moment":
+  | {
     Title: string;
     "Start SL": number;
     "End SL": number;
     Concept: string;
     "Key Takeaway": string;
     "Is Reviewed"?: boolean;
-  }[];
+  }[]
+  | undefined;
 }
 
 interface SentenceJSON {
@@ -124,7 +126,7 @@ async function parseSentencesJSON(
       skipEmptyLines: true,
       complete: (result) => {
         if (result.errors.length > 0) {
-          reject(result.errors);
+          reject(new Error(result.errors.join("\n")));
         }
         const sentences = result.data.reduce(
           (acc, s) => {
@@ -158,7 +160,7 @@ function parseTimecode(code: string) {
 }
 
 function parseKeyMomentsJSON(json: VideoInfoJSON["Key Moment"]): KeyMoment[] {
-  return json.map((k) => {
+  return json?.map((k) => {
     return {
       title: k.Title,
       sentenceRange: [k["Start SL"] - 1, k["End SL"] - 1], // 1-indexed to 0-indexed
@@ -166,5 +168,5 @@ function parseKeyMomentsJSON(json: VideoInfoJSON["Key Moment"]): KeyMoment[] {
       keyTakeaway: k["Key Takeaway"],
       isReviewed: k["Is Reviewed"] ?? false,
     };
-  });
+  }) ?? [];
 }
