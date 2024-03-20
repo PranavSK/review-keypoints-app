@@ -14,7 +14,7 @@
     "dev": "electron-vite dev --outDir=dist",
     "package": "electron-vite build --outDir=dist && electron-forge package",
     "make": "electron-vite build --outDir=dist && electron-forge make",
-    "publish": "electron-vite build --outDir=dist && electron-forge publish",
+    "release": "electron-vite build --outDir=dist && electron-forge publish",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
