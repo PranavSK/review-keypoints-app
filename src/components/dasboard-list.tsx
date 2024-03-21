@@ -19,6 +19,8 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { FC } from "react";
+import { DashboardAddItem } from "./dashboard-add-item";
+import { DashboardSessionLoad } from "./dashboard-session-load";
 
 const columnHelper = createColumnHelper<VideoInfo>();
 const columns = [
@@ -36,7 +38,7 @@ const columns = [
   }),
   columnHelper.accessor("duration", {
     header: "Duration",
-    cell: (info) => secondsToTimecode(info.getValue()),
+    cell: (info) => secondsToTimecode(info.getValue(), true),
   }),
   columnHelper.display({
     id: "progress",
@@ -132,10 +134,12 @@ export const DashboardList: FC = () => {
         </Table>
       </div>
       <div className="flex items-center justify-end space-x-2 py-4">
+        <DashboardAddItem />
+        <DashboardSessionLoad />
         <Button onClick={save} size="sm">
           Save
         </Button>
       </div>
     </div>
   );
-}
+};

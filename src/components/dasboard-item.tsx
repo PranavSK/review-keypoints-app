@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { KeyMoment, Sentence } from "@/lib/loader";
+import { KeyMoment, Sentence, keyMomentSchema } from "@/lib/loader";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import {
@@ -25,6 +25,7 @@ import {
 } from "react";
 import { z } from "zod";
 import { useForm, SubmitHandler } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
   FormControl,
@@ -716,13 +717,6 @@ function KeyMomentDuration({ index }: { index: number }) {
   );
 }
 
-const keyMomentSchema = z.object({
-  title: z.string().default("Title"),
-  concept: z.string().default("Concept"),
-  keyTakeaway: z.string().default("Key Takeaway"),
-  sentenceRange: z.tuple([z.number(), z.number()]).default([0, 0]),
-  isReviewed: z.boolean().default(false),
-});
 const defaultKeyMoment = keyMomentSchema.parse({});
 interface KeyMomentEditorProps {
   momentIndex: number;
@@ -733,7 +727,8 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
   const sentenceCount = sentences.length;
   const moment = state.keyMoments[momentIndex];
 
-  const form = useForm<z.infer<typeof keyMomentSchema>>({
+  const form = useForm<KeyMoment>({
+    resolver: zodResolver(keyMomentSchema),
     defaultValues: moment,
   });
 
@@ -749,7 +744,6 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
 
   return (
     <Form {...form}>
-      {}
       <form
         onSubmit={form.handleSubmit(handleSubmit)}
         className="w-full flex flex-col h-full"

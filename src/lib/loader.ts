@@ -1,65 +1,80 @@
 import Papa from "papaparse";
 import srtParser2 from "srt-parser-2";
+import { z } from "zod";
 
-interface VideoInfoJSON {
-  MID: string;
-  "Video Name": string;
-  Grade: string;
-  Subject: string;
-  Chapter: string;
-  "Duration (minute)": number;
-  "Video Path": string;
-  "Sentences Path"?: string;
-  "SRT Path": string;
-  "Key Moment":
-  | {
-    Title: string;
-    "Start SL": number;
-    "End SL": number;
-    Concept: string;
-    "Key Takeaway": string;
-    "Is Reviewed"?: boolean;
-  }[]
-  | undefined;
-}
+export const videoInfoJSONSchema = z
+  .object({
+    MID: z.string().min(1).default(""),
+    "Video Name": z.string().min(1).default(""),
+    Grade: z.string().min(1).default(""),
+    Subject: z.string().min(1).default(""),
+    Chapter: z.string().min(1).default(""),
+    "Duration (minute)": z.number().default(0),
+    "Video Path": z.string().url().default(""),
+    "Sentences Path": z.string().optional(),
+    "SRT Path": z.string().optional(),
+    "Key Moment": z
+      .array(
+        z.object({
+          Title: z.string(),
+          "Start SL": z.number(),
+          "End SL": z.number(),
+          Concept: z.string(),
+          "Key Takeaway": z.string(),
+          "Is Reviewed": z.boolean().optional(),
+        }),
+      )
+      .optional()
+      .default([]),
+  })
+  .refine((data) => data["Sentences Path"] || data["SRT Path"], {
+    message: "Either 'Sentences Path' or 'SRT Path' must be provided",
+    path: ["Sentences Path", "SRT Path"],
+  });
+export type VideoInfoJSON = z.infer<typeof videoInfoJSONSchema>;
+const sentenceJSONSchema = z.object({
+  MID: z.string(),
+  SL: z.coerce.number(),
+  "Start Timecode": z.string(),
+  "End Timecode": z.string(),
+  Sentence: z.string(),
+});
+type SentenceJSON = z.infer<typeof sentenceJSONSchema>;
+const sentencesJSONSchema = z.array(sentenceJSONSchema);
 
-interface SentenceJSON {
-  MID: string;
-  SL: number;
-  "Start Timecode": string;
-  "End Timecode": string;
-  Sentence: string;
-}
-
-type TimeRange = [number, number]; // seconds
-export interface Sentence {
-  timeRange: TimeRange;
-  value: string;
-}
-export interface KeyMoment {
-  title: string;
-  sentenceRange: [number, number];
-  concept: string;
-  keyTakeaway: string;
-  isReviewed: boolean;
-}
-export interface VideoInfo {
-  mid: string;
-  name: string;
-  grade: string;
-  subject: string;
-  chapter: string;
-  duration: number;
-  videoUrl: string;
-  sentences: Sentence[];
-  keyMoments: KeyMoment[];
-}
+export const timeRangeSchema = z.tuple([z.number(), z.number()]);
+export type TimeRange = z.infer<typeof timeRangeSchema>; // seconds
+export const sentenceSchema = z.object({
+  timeRange: timeRangeSchema,
+  value: z.string(),
+});
+export type Sentence = z.infer<typeof sentenceSchema>;
+export const keyMomentSchema = z.object({
+  title: z.string().default("Title"),
+  concept: z.string().default("Concept"),
+  keyTakeaway: z.string().default("Key Takeaway"),
+  sentenceRange: z.tuple([z.number().int(), z.number().int()]).default([0, 0]),
+  isReviewed: z.boolean().default(false),
+});
+export type KeyMoment = z.infer<typeof keyMomentSchema>;
+export const videoInfoSchema = z.object({
+  mid: z.string().min(1).default(""),
+  name: z.string().min(1).default(""),
+  grade: z.string().min(1).default(""),
+  subject: z.string().min(1).default(""),
+  chapter: z.string().min(1).default(""),
+  duration: z.number().default(0),
+  videoUrl: z.string().min(1).default(""),
+  sentences: z.array(sentenceSchema).default([]),
+  keyMoments: z.array(keyMomentSchema).default([]),
+});
+export type VideoInfo = z.infer<typeof videoInfoSchema>;
 
 export async function initDatabaseFromText(text: string) {
   const jsonList = text
     .split("\n")
     .filter(Boolean)
-    .map((row) => JSON.parse(row) as VideoInfoJSON);
+    .map((row) => videoInfoJSONSchema.parse(JSON.parse(row)));
   const database = {} as Record<string, VideoInfo>;
   for (const json of jsonList) {
     const info = await parseInfoJSON(json);
@@ -99,7 +114,7 @@ function unparseKeyMomentJSON(keyMoment: KeyMoment) {
   };
 }
 
-async function parseInfoJSON(json: VideoInfoJSON): Promise<VideoInfo> {
+export async function parseInfoJSON(json: VideoInfoJSON): Promise<VideoInfo> {
   let sentences: Sentence[];
   if (json["Sentences Path"] == null) {
     if (json["SRT Path"] == null) {
@@ -125,7 +140,7 @@ async function parseInfoJSON(json: VideoInfoJSON): Promise<VideoInfo> {
 }
 
 const srtParser = new srtParser2();
-async function parseSentencesSRT(url: string): Promise<Sentence[]> {
+export async function parseSentencesSRT(url: string): Promise<Sentence[]> {
   const response = await fetch(url);
   const text = await response.text();
   const parsed = srtParser.fromSrt(text);
@@ -140,7 +155,7 @@ async function parseSentencesSRT(url: string): Promise<Sentence[]> {
 }
 
 const cachedSentences = new Map<string, Record<string, Sentence[]>>();
-async function parseSentencesJSON(
+export async function parseSentencesJSON(
   url: string,
 ): Promise<Record<string, Sentence[]>> {
   return new Promise((resolve, reject) => {
@@ -154,8 +169,16 @@ async function parseSentencesJSON(
       complete: (result) => {
         if (result.errors.length > 0) {
           reject(new Error(result.errors.join("\n")));
+          return;
         }
-        const sentences = result.data.reduce(
+        let parsed: z.infer<typeof sentencesJSONSchema>;
+        try {
+          parsed = sentencesJSONSchema.parse(result.data);
+        } catch (e) {
+          reject(e);
+          return;
+        }
+        const sentences = parsed.reduce(
           (acc, s) => {
             if (acc[s.MID] == null) {
               acc[s.MID] = [];

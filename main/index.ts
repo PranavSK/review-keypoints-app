@@ -2,9 +2,13 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { readFile, writeFile } from "fs/promises";
-// import { updateElectronApp } from "update-electron-app";
-//
-// updateElectronApp();
+import { updateElectronApp } from "update-electron-app";
+import unhandled from "electron-unhandled";
+
+unhandled({
+  showDialog: true,
+});
+updateElectronApp();
 
 function createWindow(): void {
   // Create the browser window.
@@ -137,9 +141,6 @@ app
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
     });
-
-    // IPC test
-    ipcMain.on("ping", () => console.log("pong"));
 
     createWindow();
 
