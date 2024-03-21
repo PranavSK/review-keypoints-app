@@ -231,13 +231,8 @@ export const DashboardItem: FC = () => {
                 ref={videoRef}
               ></video>
             </AspectRatio>
-            {state.keyMoments.length > 0 && (
-              <>
-                <KeyMomentRangeControls />
-                <KeyMomentVideoControls />
-              </>
-            )}
-            <SentenceControls />
+            {state.keyMoments.length > 0 && <KeyMomentRangeControls />}
+            <VideoControls />
             <VideoFooter save={save} />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -287,61 +282,18 @@ function Header({ name }: { name: string }) {
   );
 }
 
-function SentenceControls() {
-  const { sentences, videoRef } = useDashboardItemContext();
-  const handlePrevious = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const currentTime = video.currentTime;
-    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
-    if (sentence < 1) return;
-    video.currentTime = sentences[sentence - 1].timeRange[0];
-  };
-  const handleNext = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const currentTime = video.currentTime;
-    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
-    if (sentence < 0 || sentence >= sentences.length - 1) return;
-    video.currentTime = sentences[sentence + 1].timeRange[0];
-  };
-  return (
-    <div className="flex items-center p-4 gap-2">
-      <Tooltip>
-        <TooltipTrigger
-          onClick={handlePrevious}
-          className={buttonVariants({ variant: "ghost", size: "rounded-icon" })}
-        >
-          <CaretLeftIcon />
-        </TooltipTrigger>
-        <TooltipContent>Previous Sentence</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          onClick={handleNext}
-          className={buttonVariants({ variant: "ghost", size: "rounded-icon" })}
-        >
-          <CaretRightIcon />
-        </TooltipTrigger>
-        <TooltipContent>Next Sentence</TooltipContent>
-      </Tooltip>
-    </div>
-  );
-}
-
-function KeyMomentVideoControls() {
+function VideoControls() {
   const { sentences, state, videoRef } = useDashboardItemContext();
-  const activeSentenceRange =
-    state.keyMoments[state.selectedKeyMoment].sentenceRange;
-  const activeTimeRange = useMemo(
-    () => [
+  const activeTimeRange = useMemo(() => {
+    if (!state.keyMoments[state.selectedKeyMoment]) return [0, 1];
+    const activeSentenceRange =
+      state.keyMoments[state.selectedKeyMoment].sentenceRange;
+
+    return [
       sentences[activeSentenceRange[0]].timeRange[0],
       sentences[activeSentenceRange[1]].timeRange[1],
-    ],
-    [sentences, activeSentenceRange],
-  );
+    ];
+  }, [sentences, state.keyMoments, state.selectedKeyMoment]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const isKeymomentModeRef = useRef(false);
@@ -397,48 +349,95 @@ function KeyMomentVideoControls() {
     };
   }, [videoRef, activeTimeRange]);
 
+  const handlePrevious = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
+    if (sentence < 1) return;
+    video.currentTime = sentences[sentence - 1].timeRange[0];
+  };
+  const handleNext = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
+    if (sentence < 0 || sentence >= sentences.length - 1) return;
+    video.currentTime = sentences[sentence + 1].timeRange[0];
+  };
   return (
-    <div className="flex items-center p-4 gap-2">
-      {isPlaying ? (
+    <>
+      <div className="flex items-center p-4 gap-2">
+        <Slider
+          min={activeTimeRange[0]}
+          max={activeTimeRange[1]}
+          step={0.01}
+          value={[currentTime]}
+          onValueChange={handleSliderValueChange}
+        />
+      </div>
+
+      <div className="flex items-center justify-center p-4 gap-2">
+        {isPlaying ? (
+          <Button
+            size="rounded-icon"
+            className="shrink-0"
+            variant="secondary"
+            onClick={() => videoRef.current?.pause()}
+          >
+            <PauseIcon />
+          </Button>
+        ) : (
+          <Button
+            size="rounded-icon"
+            className="shrink-0"
+            onClick={() => {
+              triggerKeymomentModeRef.current = true;
+              void videoRef.current?.play();
+            }}
+          >
+            <PlayIcon />
+          </Button>
+        )}
         <Button
-          size="rounded-icon"
-          className="shrink-0"
           variant="secondary"
-          onClick={() => videoRef.current?.pause()}
-        >
-          <PauseIcon />
-        </Button>
-      ) : (
-        <Button
           size="rounded-icon"
           className="shrink-0"
           onClick={() => {
-            triggerKeymomentModeRef.current = true;
-            void videoRef.current?.play();
+            if (videoRef.current)
+              videoRef.current.currentTime = activeTimeRange[0];
           }}
         >
-          <PlayIcon />
+          <ReloadIcon />
         </Button>
-      )}
-      <Button
-        variant="secondary"
-        size="rounded-icon"
-        className="shrink-0"
-        onClick={() => {
-          if (videoRef.current)
-            videoRef.current.currentTime = activeTimeRange[0];
-        }}
-      >
-        <ReloadIcon />
-      </Button>
-      <Slider
-        min={activeTimeRange[0]}
-        max={activeTimeRange[1]}
-        step={0.01}
-        value={[currentTime]}
-        onValueChange={handleSliderValueChange}
-      />
-    </div>
+        <Tooltip>
+          <TooltipTrigger
+            onClick={handlePrevious}
+            className={buttonVariants({
+              variant: "ghost",
+              size: "rounded-icon",
+            })}
+          >
+            <CaretLeftIcon />
+          </TooltipTrigger>
+          <TooltipContent>Previous Sentence</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            onClick={handleNext}
+            className={buttonVariants({
+              variant: "ghost",
+              size: "rounded-icon",
+            })}
+          >
+            <CaretRightIcon />
+          </TooltipTrigger>
+          <TooltipContent>Next Sentence</TooltipContent>
+        </Tooltip>
+      </div>
+    </>
   );
 }
 
