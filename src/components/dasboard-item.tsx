@@ -496,12 +496,35 @@ function KeyMomentRangeControls() {
 }
 
 function SentenceList() {
-  const { sentences, state } = useDashboardItemContext();
+  const { sentences, state, videoRef } = useDashboardItemContext();
+  const [currrentSentence, setCurentSentence] = useState(0);
+  const [currentSentenceProgress, setCurrentSentenceProgress] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeupdate = () => {
+      const currentTime = video.currentTime;
+      const sentence = sentences.findIndex(
+        (s) => s.timeRange[1] >= currentTime,
+      );
+      setCurentSentence(sentence);
+      const duration =
+        sentences[sentence].timeRange[1] - sentences[sentence].timeRange[0];
+      const progress = currentTime - sentences[sentence].timeRange[0];
+      setCurrentSentenceProgress((progress / duration) * 100);
+    };
+    video.addEventListener("timeupdate", handleTimeupdate);
+    return () => {
+      video.removeEventListener("timeupdate", handleTimeupdate);
+    };
+  }, [videoRef]);
 
   const groups = useMemo(() => {
     interface Group {
       keyMomentIndex: number;
-      sentences: string[];
+      sentences: { sentence: string; sentenceIndex: number }[];
     }
     const groups: Group[] = [];
     let currentGroup: Group = { keyMomentIndex: -1, sentences: [] };
@@ -517,26 +540,42 @@ function SentenceList() {
       if (i === state.keyMoments[index]?.sentenceRange[0]) {
         pushGroup();
         currentGroup.keyMomentIndex = index;
-        currentGroup.sentences.push(value);
+        currentGroup.sentences.push({ sentence: value, sentenceIndex: i });
       } else if (i === state.keyMoments[index]?.sentenceRange[1]) {
-        currentGroup.sentences.push(value);
+        currentGroup.sentences.push({ sentence: value, sentenceIndex: i });
         pushGroup();
         index++;
       } else {
-        currentGroup.sentences.push(value);
+        currentGroup.sentences.push({ sentence: value, sentenceIndex: i });
       }
     }
     pushGroup();
     return groups;
   }, [sentences, state.keyMoments]);
 
-  const scrollAnchors = useRef<ComponentRef<"li">[]>([]);
+  const scrollKeymomentAnchors = useRef<ComponentRef<"li">[]>([]);
+  const scrollSentenceAnchors = useRef<ComponentRef<"li">[]>([]);
   const scrollContainer = useRef<ComponentRef<typeof ScrollArea>>(null);
 
+  // useEffect(() => {
+  //   const anchor = scrollKeymomentAnchors.current[state.selectedKeyMoment];
+  //   const container = scrollContainer.current;
+  //   if (!anchor || !container) return;
+  //   const { top } = anchor.getBoundingClientRect();
+  //   const { top: containerTop, height: containerHeight } =
+  //     container.getBoundingClientRect();
+  //   const distanceRatio = (top - containerTop) / containerHeight;
+  //   anchor.scrollIntoView({
+  //     behavior: "smooth",
+  //     block: distanceRatio > 0.5 ? "start" : "nearest",
+  //   });
+  // }, [state.selectedKeyMoment]);
+
   useEffect(() => {
-    const anchor = scrollAnchors.current[state.selectedKeyMoment];
+    const anchor = scrollSentenceAnchors.current[currrentSentence];
     const container = scrollContainer.current;
     if (!anchor || !container) return;
+
     const { top } = anchor.getBoundingClientRect();
     const { top: containerTop, height: containerHeight } =
       container.getBoundingClientRect();
@@ -545,7 +584,7 @@ function SentenceList() {
       behavior: "smooth",
       block: distanceRatio > 0.5 ? "start" : "nearest",
     });
-  }, [state.selectedKeyMoment]);
+  }, [currrentSentence]);
 
   return (
     <>
@@ -553,7 +592,7 @@ function SentenceList() {
         Sentences
       </h2>
       <ScrollArea className="px-1 h-[calc(100%-2rem)]" ref={scrollContainer}>
-        <ol className="list-decimal px-2 pb-6 flex flex-col gap-2 [&_li]:ml-8">
+        <ol className="list-decimal px-2 pb-6 flex flex-col gap-2 [&_li]:ml-8 marker:text-secondary-foreground/30">
           {groups.map(({ keyMomentIndex, sentences }, i) => (
             <Fragment key={i}>
               <div
@@ -566,15 +605,23 @@ function SentenceList() {
                 )}
               >
                 {/* {keyMomentIndex !== -1 && <span className='font-bold uppercase'>{state.keyMoments[keyMomentIndex].title}</span>} */}
-                {sentences.map((sentence, j) => (
+                {sentences.map(({ sentence, sentenceIndex }, j) => (
                   <li
                     key={j}
                     ref={(el) => {
-                      if (j === 0 && keyMomentIndex > -1 && el)
-                        scrollAnchors.current[keyMomentIndex] = el;
+                      if (!el) return;
+                      scrollSentenceAnchors.current[sentenceIndex] = el;
+                      if (j === 0 && keyMomentIndex > -1)
+                        scrollKeymomentAnchors.current[keyMomentIndex] = el;
                     }}
-                    className="snap-start"
+                    className="snap-start relative"
                   >
+                    {currrentSentence === sentenceIndex && (
+                      <span
+                        className="bg-lime-400/40 absolute -left-8 h-full"
+                        style={{ right: `${100 - currentSentenceProgress}%` }}
+                      />
+                    )}
                     {sentence}
                   </li>
                 ))}
