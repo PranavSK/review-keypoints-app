@@ -50,6 +50,8 @@ import {
   DotFilledIcon,
   DoubleArrowUpIcon,
   PauseIcon,
+  PinLeftIcon,
+  PinRightIcon,
   PlayIcon,
   PlusIcon,
   ReloadIcon,
@@ -122,14 +124,10 @@ const reducer = (state: State, action: Action): State => {
     case "MERGE_KEY_MOMENTS": {
       const stateCopy = { ...state };
       const keyMomentsCopy = [...state.keyMoments];
-      const target = { ...keyMomentsCopy[action.payload] };
-      const next = keyMomentsCopy[action.payload + 1];
-      target.title = `${target.title}, ${next.title}`;
-      target.concept = `${target.concept}, ${next.concept}`;
-      target.keyTakeaway = `${target.keyTakeaway}, ${next.keyTakeaway}`;
-      target.sentenceRange = [target.sentenceRange[0], next.sentenceRange[1]];
-      target.isReviewed = false;
-      keyMomentsCopy[action.payload] = target;
+      keyMomentsCopy[action.payload] = mergeKeyMoments(
+        keyMomentsCopy[action.payload],
+        keyMomentsCopy[action.payload + 1],
+      );
       keyMomentsCopy.splice(action.payload + 1, 1);
       stateCopy.keyMoments = keyMomentsCopy;
       return stateCopy;
@@ -146,25 +144,44 @@ const reducer = (state: State, action: Action): State => {
   }
 };
 
+function mergeKeyMoments(target: KeyMoment, source: KeyMoment) {
+  const targetCopy = { ...target };
+  targetCopy.title = `${targetCopy.title}, ${source.title}`;
+  targetCopy.concept = `${targetCopy.concept}, ${source.concept}`;
+  targetCopy.keyTakeaway = `${targetCopy.keyTakeaway}, ${source.keyTakeaway}`;
+  targetCopy.sentenceRange = [
+    targetCopy.sentenceRange[0],
+    source.sentenceRange[1],
+  ];
+  targetCopy.isReviewed = false;
+
+  return targetCopy;
+}
+
 function preventRangeOverlap(ranges: KeyMoment[]) {
   // Sort in ascending order of start time
   // Then reduce reverse to build a stack adjusting the start times of subsequent ranges
-  return ranges
-    .sort((a, b) => a.sentenceRange[0] - b.sentenceRange[0])
-    .reduceRight((acc, cur) => {
-      const [, end] = cur.sentenceRange;
-      const prev = acc[0];
-      if (prev && end >= prev.sentenceRange[0]) {
-        prev.sentenceRange[0] = end + 1;
+  const sorted = ranges.sort((a, b) => a.sentenceRange[0] - b.sentenceRange[0]);
+  const stack: KeyMoment[] = [];
+  for (const cur of sorted.reverse()) {
+    const [start, end] = cur.sentenceRange;
+    let next = { ...cur };
+    if (stack[0] && end >= stack[0].sentenceRange[0]) {
+      while (stack[0] && end >= stack[0].sentenceRange[1]) {
+        next = mergeKeyMoments(next, stack[0]);
+        next.sentenceRange = [start, end];
+        stack.shift();
       }
-      acc.unshift(cur);
-      return acc;
-    }, [] as KeyMoment[]);
+      stack[0].sentenceRange[0] = end + 1;
+    }
+    stack.unshift(next);
+  }
+
+  return stack;
 }
 
 interface DashboardItemContext {
   sentences: Sentence[];
-  origKeyMoments: KeyMoment[];
   state: State;
   dispatch: Dispatch<Action>;
   videoRef: RefObject<ComponentRef<"video">>;
@@ -199,9 +216,7 @@ export const DashboardItem: FC = () => {
   }, [state.keyMoments, updateList]);
 
   return (
-    <DashboardItemProvider
-      value={{ sentences, origKeyMoments, state, dispatch, videoRef }}
-    >
+    <DashboardItemProvider value={{ sentences, state, dispatch, videoRef }}>
       <div className="h-full flex flex-col">
         <Header name={name} />
         <ResizablePanelGroup direction="horizontal" className="grow">
@@ -284,7 +299,7 @@ function Header({ name }: { name: string }) {
 }
 
 function VideoControls() {
-  const { sentences, state, videoRef } = useDashboardItemContext();
+  const { sentences, state, videoRef, dispatch } = useDashboardItemContext();
   const activeTimeRange = useMemo(() => {
     if (!state.keyMoments[state.selectedKeyMoment]) return [0, 1];
     const activeSentenceRange =
@@ -333,7 +348,6 @@ function VideoControls() {
     const video = videoRef.current;
     if (!video) return;
 
-    video.currentTime = activeTimeRange[0];
     const handleTimeupdate = () => {
       setCurrentTime(video.currentTime);
       if (
@@ -368,6 +382,38 @@ function VideoControls() {
     if (sentence < 0 || sentence >= sentences.length - 1) return;
     video.currentTime = sentences[sentence + 1].timeRange[0];
   };
+  const handlePinStart = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
+    dispatch({
+      type: "MODIFY_KEY_MOMENT",
+      payload: {
+        sentenceRange: [
+          sentence,
+          state.keyMoments[state.selectedKeyMoment].sentenceRange[1],
+        ],
+      },
+    });
+  };
+  const handlePinEnd = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const currentTime = video.currentTime;
+    const sentence = sentences.findIndex((s) => s.timeRange[1] >= currentTime);
+    dispatch({
+      type: "MODIFY_KEY_MOMENT",
+      payload: {
+        sentenceRange: [
+          state.keyMoments[state.selectedKeyMoment].sentenceRange[0],
+          sentence,
+        ],
+      },
+    });
+  };
   return (
     <>
       <div className="flex items-center p-4 gap-2">
@@ -396,7 +442,14 @@ function VideoControls() {
             className="shrink-0"
             onClick={() => {
               triggerKeymomentModeRef.current = true;
-              void videoRef.current?.play();
+              const video = videoRef.current;
+              if (!video) return;
+              if (
+                video.currentTime < activeTimeRange[0] ||
+                video.currentTime > activeTimeRange[1]
+              )
+                video.currentTime = activeTimeRange[0];
+              void video.play();
             }}
           >
             <PlayIcon />
@@ -417,7 +470,7 @@ function VideoControls() {
           <TooltipTrigger
             onClick={handlePrevious}
             className={buttonVariants({
-              variant: "ghost",
+              variant: "secondary",
               size: "rounded-icon",
             })}
           >
@@ -429,13 +482,41 @@ function VideoControls() {
           <TooltipTrigger
             onClick={handleNext}
             className={buttonVariants({
-              variant: "ghost",
+              variant: "secondary",
               size: "rounded-icon",
             })}
           >
             <CaretRightIcon />
           </TooltipTrigger>
           <TooltipContent>Next Sentence</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            onClick={handlePinStart}
+            className={buttonVariants({
+              variant: "secondary",
+              size: "rounded-icon",
+            })}
+          >
+            <PinLeftIcon />
+          </TooltipTrigger>
+          <TooltipContent>
+            Pin start of active key moment to the current sentence.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            onClick={handlePinEnd}
+            className={buttonVariants({
+              variant: "secondary",
+              size: "rounded-icon",
+            })}
+          >
+            <PinRightIcon />
+          </TooltipTrigger>
+          <TooltipContent>
+            Pin end of active key moment to the current sentence.
+          </TooltipContent>
         </Tooltip>
       </div>
     </>
@@ -649,7 +730,7 @@ function KeyMomentsList() {
       <ResizablePanel defaultSize={25}>
         <ScrollArea className="px-1 h-full">
           <RadioGroup
-            defaultValue="0"
+            value={`${state.selectedKeyMoment}`}
             onValueChange={(i) =>
               dispatch({ type: "SELECT_KEY_MOMENT", payload: parseInt(i) })
             }
@@ -722,8 +803,7 @@ interface KeyMomentEditorProps {
   momentIndex: number;
 }
 function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
-  const { sentences, origKeyMoments, state, dispatch } =
-    useDashboardItemContext();
+  const { sentences, state, dispatch } = useDashboardItemContext();
   const sentenceCount = sentences.length;
   const moment = state.keyMoments[momentIndex];
 
@@ -835,19 +915,6 @@ function KeyMomentEditor({ momentIndex }: KeyMomentEditorProps) {
           </CardContent>
         </ScrollArea>
         <CardFooter className="flex justify-end gap-2 pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              dispatch({
-                type: "MODIFY_KEY_MOMENT",
-                payload: origKeyMoments[momentIndex],
-              })
-            }
-          >
-            Reset
-          </Button>
           <Button
             type="submit"
             variant="secondary"
