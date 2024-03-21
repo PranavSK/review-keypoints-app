@@ -173,6 +173,9 @@ async function parseSentencesJSON(
         cachedSentences.set(url, sentences);
         resolve(sentences);
       },
+      error: (error) => {
+        reject(new Error(`Failed to fetch sentences: ${error}`));
+      },
     });
   });
 }
