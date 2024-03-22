@@ -6,7 +6,6 @@ module.exports = {
       /^\/src/,
       /^\/main/,
       /^\/preload/,
-      /^\/node_modules/,
       /(.eslintrc.json)|(.eslintignore)|(.prettierignore)|(postcss.config.js)|(tailwind.config.js)|(.DS_Store)|(.gitignore)|(electron.vite.config.ts)|(forge.config.cjs)|(tsconfig.*)|(components.json)/,
     ],
     icon: path.join(__dirname, "./resources/icon.png"),
